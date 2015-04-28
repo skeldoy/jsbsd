@@ -1,0 +1,72 @@
+#!/bin/sh
+if [ -z $@ ]; then
+ echo "please give the appname as parameter";
+else
+
+echo "First we fix the rc.conf's"
+echo "sshd_enable=\"YES\"" >> /usr/jails/$1_session/etc/rc.conf
+echo "redis_enable=\"YES\"" >> /usr/jails/$1_session/etc/rc.conf
+echo "sshd_enable=\"YES\"" >> /usr/jails/$1_db/etc/rc.conf
+echo "mongod_enable=\"YES\"" >> /usr/jails/$1_db/etc/rc.conf
+echo "sshd_enable=\"YES\"" >> /usr/jails/$1_proxy/etc/rc.conf
+echo "nginx_enable=\"YES\"" >> /usr/jails/$1_proxy/etc/rc.conf
+echo "sshd_enable=\"YES\"" >> /usr/jails/$1_app/etc/rc.conf
+
+echo "Then we configure the app-node" 
+echo Y|pkg -j $1_app install node
+echo Y|pkg -j $1_app install python
+echo Y|pkg -j $1_app install npm
+echo Y|pkg -j $1_app install gmake
+echo Y|pkg -j $1_app install perl5
+echo Y|pkg -j $1_app install php56
+echo "Then we do the db-node"
+echo Y|pkg -j $1_db install mongodb
+#echo Y|pkg -j $1_db install couchdb
+echo "The session node"
+echo Y|pkg -j $1_session install redis
+echo "The proxy node"
+echo Y|pkg -j $1_proxy install nginx
+
+echo "Fixing g++ symlink to clang++"
+# The g++ is missing now a days so we need to create a symlink
+WHERE=`pwd`
+cd /usr/jails/basejail/usr/bin/
+ln -s clang++ g++
+cd $WHERE
+# Then we get some npm packages
+echo "Installing some node-modules"
+#ssh root@$1_app npm install -g couchbase
+ssh root@$1_app npm install -g redis
+ssh root@$1_app npm install -g sails
+ssh root@$1_app npm install -g async
+ssh root@$1_app npm install -g colors
+ssh root@$1_app npm install -g ejs
+ssh root@$1_app npm install -g grunt
+ssh root@$1_app npm install -g lodash
+ssh root@$1_app npm install -g passport
+ssh root@$1_app npm install -g passport-local
+ssh root@$1_app npm install -g sails-mongo
+ssh root@$1_app npm install -g bcrypt
+ssh root@$1_app npm install -g bower
+
+echo "Restarting db, session and proxy"
+ssh root@$1_db service mongod start
+ssh root@$1_session service redis start
+ssh root@$1_proxy service nginx start
+
+echo "Adding non-priviledged user to sandboxes"
+ssh root@$1_app adduser -f /etc/user.def
+ssh root@$1_db adduser -f /etc/user.def
+ssh root@$1_session adduser -f /etc/user.def
+ssh root@$1_proxy adduser -f /etc/user.def
+ssh root@$1_app rm /etc/user.def
+ssh root@$1_db rm /etc/user.def
+ssh root@$1_session rm /etc/user.def
+ssh root@$1_proxy rm /etc/user.def
+#ssh root@$1_app mkdir /home/$1
+#ssh root@$1_db mkdir /home/$1
+#ssh root@$1_session mkdir /home/$1
+#ssh root@$1_proxy mkdir /home/$1
+
+
+fi

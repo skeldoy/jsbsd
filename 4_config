@@ -1,0 +1,100 @@
+#!/bin/sh
+
+if [ -z $@ ]; then
+ echo "You need to supply the app name as a parameter"
+else
+appname=$1
+a="app"
+d="db"
+s="session"
+p="proxy"
+
+ for var in 0 1 2 3
+  do
+# trick to avoid having to use bash
+   let oneMore=var+1
+   suffix=`cat names.txt | head -n $oneMore | tail -1`
+   under="_"
+   name="$appname$under$suffix"
+   echo "(ssh)Key work for jumping to unpriviledged user"
+   mkdir /usr/jails/$name/home/$appname/.ssh
+   if [ -f id_rsa.pub ]; then
+   cat id_rsa.pub > /usr/jails/$name/home/$appname/.ssh/authorized_keys
+   fi
+   cat ~/.ssh/id_rsa.pub >> /usr/jails/$name/home/$appname/.ssh/authorized_keys
+   echo "#!/bin/sh">/sbin/$name$under$appname
+   echo "ssh $appname@$name \$@" >>/sbin/$name$under$appname
+   chmod +x /sbin/$name$under$appname
+ done
+
+echo "Creating a sails app as a regular user"
+$appname$under$a$under$appname sails new $appname 
+
+echo "Fixing it to use the session storage"
+sess="/usr/jails/$appname$under$a/home/$appname/$appname/config/session.js"
+# last line is a }; .. we want that gone before we commence..
+seslin=`cat $sess | wc -l`
+let sessleng=$seslin-1
+cat $sess | head -n $sessleng > $sess
+echo "adapter:'redis'," >>$sess
+echo "host: '$appname$under$s'," >> $sess
+#change these if you want to do something else.. but follow up in sandbox
+#echo "pass: 
+#echo "ttl:
+#echo "db:
+#echo "prefix:
+echo "};" >>$sess
+
+
+echo "Fixing it to use our db server"
+dbpass=`hostname|sha1` 
+# you might want to change the password to something more random if in prod
+conn="/usr/jails/$appname$under$a/home/$appname/$appname/config/connections.js"
+echo "module.exports.connections = { mongo: { adapter: 'sails-mongo'," > $conn
+echo "host:'$appname$under$d'," >>$conn
+echo "port:27017," >>$conn
+echo "user: '$appname',">>$conn
+echo "password: '$dbpass',">>$conn
+echo "database: '$appname' } }; " >>$conn
+
+echo "Creating database user for ORM"
+dbuser="/usr/jails/$appname$under$d/home/$appname/user.db"
+# now we create that user on that database on the db-jail:
+echo "use $appname" > $dbuser
+echo "db.createUser( " >> $dbuser
+echo "{ user: '$appname',">> $dbuser
+echo "  pwd: '$dbpass', " >> $dbuser
+echo "  roles: [ 'readWrite' ] } )">>$dbuser
+$appname$under$d$under$appname -C 'cat ~/user.db | mongo'
+# not deleting file in case you need the pwd
+
+echo "Enable to ORM towards the db-sandbox"
+# specify that we want to use the database for our ORM activities
+   cat ./templates/dbModel > /usr/jails/$appname$under$a/home/$appname/$appname/config/models.js
+$appname$under$a$under$appname -C 'cd $appname; npm install sails-mongo'
+$appname$under$a$under$appname -C 'cd $appname; npm install sails-mongo'
+
+echo "Setting the proxy to point to the app sandbox"
+nginxcfg="/usr/jails/$appname$under$p/usr/local/etc/nginx/nginx.conf"
+nginxcfgLength=`cat $nginxcfg | wc -l`
+let cutOff=$nginxcfgLength-1
+cat $nginxcfg | head -n $cutOff > $nginxcfg
+echo "include /home/lighthouse/site/*;" >> $nginxcfg
+echo "}" >> $nginxcfg
+#cat $nginxcfg | sed 's/\ 80;/\ 81;/' > $nginxcfg
+mkdir /usr/jails/$appname$under$p/home/$appname/site
+cat ./templates/nginx1 > /usr/jails/$appname$under$p/home/$appname/site/default
+echo "proxy_pass http://$appname$under$a:1337;" >> /usr/jails/$appname$under$p/home/$appname/site/default
+cat ./templates/nginx2 >> /usr/jails/$appname$under$p/home/$appname/site/default
+$appname$under$p -C 'service nginx restart'
+
+# enable strict host key checking again to annoy you
+cat ~/.ssh/config | sed "s/StrictHostKeyChecking no//" > ~/.ssh/config
+
+
+
+
+
+echo "Done! :)"
+
+fi

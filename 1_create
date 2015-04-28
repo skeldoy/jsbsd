@@ -1,0 +1,61 @@
+#!/bin/sh
+if [ -z $@ ]; then
+  echo "Where do we start the ip-range of the internal sandboxes? (eg: 10.0.1.201) and what to call the app?"
+else
+
+appname=$2
+
+# First we make keys if they are not there
+if [ ! -f ~/.ssh/id_rsa.pub ]; then
+ echo "" |ssh-keygen -t rsa -N ""
+fi
+
+# We need to switch off the strict host key checking to avoid yes no shit
+echo "StrictHostKeyChecking no" >> ~/.ssh/config
+
+## First we get some packages we need to do all of this:
+echo "We need some user input here. Type Y on the questions"
+pkg
+pkg install ezjail
+ezjail-admin install 
+
+## This looks ugly but it is done to chop up the input from the user
+ FIRST=`echo $1 | cut -d"." -f1`
+ SECOND=`echo $1 | cut -d"." -f2`
+ THIRD=`echo $1 | cut -d"." -f3`
+ FOURTH=`echo $1 | cut -d"." -f4`
+
+## Ugly hack for getting the broadcast address on the nic
+ BROADCAST=`ifconfig | grep broadcast | awk '{print $6;}' | head -n 1 `
+ echo Creating 4 sandboxes with broadcast address $BROADCAST
+
+ for var in 0 1 2 3 
+  do
+   let ADD=$FOURTH+var
+   IP=`echo $FIRST.$SECOND.$THIRD.$ADD`
+ ifconfig em0 alias $IP netmask 0xffffff00 broadcast $BROADCAST
+
+# trick to avoid having to use bash
+   let oneMore=var+1
+   postfix=`cat names.txt | head -n $oneMore | tail -1`
+   under="_"
+   name="$appname$under$postfix"
+# the actual jails
+   ezjail-admin create $name $IP
+   echo "$IP	$name" >> /etc/hosts
+   echo "$IP    $name" >> ~/.internalNames
+   mkdir /usr/jails/$name/root/.ssh
+    echo "StrictHostKeyChecking no" > /usr/jails/$name/root/.ssh/config
+# we make sure they have our ssh pub key
+   cat ~/.ssh/id_rsa.pub > /usr/jails/$name/root/.ssh/authorized_keys
+  if [ -f id_rsa.pub ]; then
+    cat id_rsa.pub >> /usr/jails/$name/root/.ssh/authorized_keys
+  fi
+# make sure root can actually ssh in
+#   echo "StrictHostKeyChecking no" >> /usr/jails/$name/etc/ssh/sshd_config
+   echo "PermitRootLogin yes" >> /usr/jails/$name/etc/ssh/sshd_config
+# then we start them
+   service ezjail onestart $name
+done
+fi
+

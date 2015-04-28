@@ -1,0 +1,33 @@
+#!/bin/sh
+
+if [ -z $@ ]; then
+ echo "You need to supply the app name as a parameter"
+else
+appname=$1
+
+ for var in 0 1 2 3
+  do
+# trick to avoid having to use bash
+   let oneMore=var+1
+   suffix=`cat names.txt | head -n $oneMore | tail -1`
+   under="_"
+   name="$appname$under$suffix"
+   cp /etc/resolv.conf /usr/jails/$name/etc
+   ezjail-admin console -e "service sshd onestart" $name
+# setting the host file on the box to show all the other boxes
+   cat ~/.internalNames >> /usr/jails/$name/etc/hosts
+
+echo "$appname::::::$appname User:/home/$appname:/bin/sh:" > /usr/jails/$name/etc/user.def
+
+
+# no idea how to avoid this step
+   echo " SSHing to $name please type yes"
+# doing some metaprogramming to setup a quick way to run commands on nodes
+   echo "#!/bin/sh">/sbin/$name
+   echo "ssh root@$name \$@" >>/sbin/$name
+   chmod +x /sbin/$name
+# testing said metaprogram
+   $name hostname
+done
+
+fi

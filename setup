@@ -1,0 +1,40 @@
+#!/bin/sh
+if [ -z $@ ]; then
+ echo "**************************************************************"
+  echo "* Bootstrapping tool for creating a complete dev environment *"
+  echo "**************************************************************"
+  echo "Please provide two parameters: IP and AppName"
+  echo "IP: Where do we start the ip-range of the internal sandboxes? (eg: 10.0.1.201)"
+  echo "AppName: what to call the app?"
+  echo "------------------------------"
+  echo "Note: If you have a public key that you want to be authorized"
+  echo "on the boxes; plop it in this directory before running the setup."
+  echo "------------------------------"
+  echo "example: ./setup 10.0.1.200 someApp"
+else
+
+if [ -z $1 ]; then
+ echo "No ip provided"
+else
+if [ -z $2 ]; then
+ echo "No appname provided"
+else
+
+./1_create $1 $2
+./2_loopOver $2
+./3_setup $2
+./4_config $2
+
+echo "**************************************************************"
+echo "You now have the following setup:"
+echo "application-server for $2 called $2 _app"
+echo "db, session and proxy-servers with same naming convention."
+echo "you can ssh into them from this box by running the $2 _role commands."
+echo "A hostlist for the servers are in ~/.internalNames to be exported out."
+echo "There is also a non-privileged user called $2 on all boxes."
+echo "Happy building!"
+echo "**************************************************************"
+
+fi
+fi
+fi
